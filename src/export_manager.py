@@ -34,21 +34,31 @@ def create_excel_export(matching_results: pd.DataFrame, processed_data: dict) ->
             summary_df = pd.DataFrame(list(summary_data.items()), columns=['Metric', 'Value'])
             summary_df.to_excel(writer, sheet_name='Summary', index=False)
             
-            # Match type breakdown
-            match_breakdown = matching_results.groupby('match_type').agg({
-                'company_name': 'count',
-                'vendor_total_spend_usd': 'sum',
-                'client_total_spend_usd': 'sum',
-                'total_relationship_value': 'sum'
-            }).round(2)
-            match_breakdown.columns = ['Count', 'Vendor Spend (USD)', 'Client Spend (USD)', 'Total Value (USD)']
-            match_breakdown.to_excel(writer, sheet_name='Match Analysis')
+            # Match type breakdown - handle both match_type and match_quality
+            match_column = 'match_type' if 'match_type' in matching_results.columns else 'match_quality'
+            if match_column in matching_results.columns:
+                match_breakdown = matching_results.groupby(match_column).agg({
+                    'company_name': 'count',
+                    'vendor_total_spend_usd': 'sum',
+                    'client_total_spend_usd': 'sum',
+                    'total_relationship_value': 'sum'
+                }).round(2)
+                match_breakdown.columns = ['Count', 'Vendor Spend (USD)', 'Client Spend (USD)', 'Total Value (USD)']
+                match_breakdown.to_excel(writer, sheet_name='Match Analysis')
             
-            # Top relationships
-            top_relationships = matching_results.nlargest(20, 'total_relationship_value')[
-                ['company_name', 'vendor_total_spend_usd', 'client_total_spend_usd', 
-                 'total_relationship_value', 'match_type', 'match_score']
-            ]
+            # Top relationships - handle different column structures
+            top_cols = ['company_name', 'vendor_total_spend_usd', 'client_total_spend_usd', 'total_relationship_value']
+            
+            # Add match type column if available
+            if 'match_type' in matching_results.columns:
+                top_cols.extend(['match_type', 'match_score'])
+            elif 'match_quality' in matching_results.columns:
+                top_cols.append('match_quality')
+            
+            # Only include columns that actually exist
+            available_cols = [col for col in top_cols if col in matching_results.columns]
+            
+            top_relationships = matching_results.nlargest(20, 'total_relationship_value')[available_cols]
             top_relationships.to_excel(writer, sheet_name='Top Relationships', index=False)
             
         # Raw data sheets (if available)
@@ -363,13 +373,29 @@ def create_html_export(matching_results: pd.DataFrame, processed_data: dict) -> 
                                 <td class="currency">${{ "%.0f"|format(row.client_total_spend_usd) }}</td>
                                 <td class="currency"><strong>${{ "%.0f"|format(row.total_relationship_value) }}</strong></td>
                                 <td>
-                                    {% if row.match_type == 'exact' %}
-                                        <span class="match-exact">EXACT</span>
+                                    {% if row.match_type is defined %}
+                                        {% if row.match_type == 'exact' %}
+                                            <span class="match-exact">EXACT</span>
+                                        {% else %}
+                                            <span class="match-fuzzy">FUZZY</span>
+                                        {% endif %}
+                                    {% elif row.match_quality is defined %}
+                                        {% if row.match_quality == 'Exact' %}
+                                            <span class="match-exact">EXACT</span>
+                                        {% else %}
+                                            <span class="match-fuzzy">FUZZY</span>
+                                        {% endif %}
                                     {% else %}
-                                        <span class="match-fuzzy">FUZZY</span>
+                                        <span class="match-fuzzy">MATCHED</span>
                                     {% endif %}
                                 </td>
-                                <td>{{ "%.1f"|format(row.match_score * 100) }}%</td>
+                                <td>
+                                    {% if row.match_score is defined %}
+                                        {{ "%.1f"|format(row.match_score * 100) }}%
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                </td>
                                 <td>{{ row.vendor_contract_end_date }}</td>
                             </tr>
                             {% endfor %}
@@ -436,8 +462,17 @@ def create_summary_data(matching_results: pd.DataFrame, processed_data: dict) ->
             'total_value': '0'
         }
     
-    exact_matches = sum(matching_results['match_type'] == 'exact')
-    fuzzy_matches = sum(matching_results['match_type'] == 'fuzzy')
+    # Handle both raw matches (with match_type) and consolidated data (with match_quality)
+    if 'match_type' in matching_results.columns:
+        exact_matches = sum(matching_results['match_type'] == 'exact')
+        fuzzy_matches = sum(matching_results['match_type'] == 'fuzzy')
+    elif 'match_quality' in matching_results.columns:
+        exact_matches = sum(matching_results['match_quality'] == 'Exact')
+        fuzzy_matches = sum(matching_results['match_quality'] == 'Fuzzy')
+    else:
+        exact_matches = 0
+        fuzzy_matches = 0
+    
     total_value = matching_results['total_relationship_value'].sum()
     
     return {

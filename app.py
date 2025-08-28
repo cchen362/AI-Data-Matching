@@ -230,55 +230,28 @@ def initialize_session_state():
         st.session_state.relationship_mapper = RelationshipMapper()
 
 def handle_file_upload():
-    """Handle simplified file upload with intelligent detection."""
+    """Simple file upload with automatic detection."""
     st.sidebar.header("📁 Upload Files")
     
-    st.sidebar.markdown("""
-    🤖 **Smart Upload**: Upload all your files and our AI will automatically 
-    detect whether they contain vendor contracts, client data, or opportunities!
-    """)
+    st.sidebar.markdown("Upload your files and we'll automatically detect the file types.")
     
-    # Single unified upload section
+    # Simple file upload - everything gets auto-detected
     uploaded_files = st.sidebar.file_uploader(
-        "Upload your data files",
+        "Upload data files",
         type=['csv', 'xlsx', 'xls'],
         accept_multiple_files=True,
-        help="Upload vendor contracts, client data, and opportunity files. The system will automatically detect file types based on column headers."
+        help="Upload vendor contracts, client data, and opportunity files."
     )
     
-    # Organize files based on detected type
     vendor_file = None
     client_files = {}
     
     if uploaded_files:
-        st.sidebar.markdown("### 🔍 File Detection Results")
+        st.sidebar.success(f"✅ {len(uploaded_files)} files uploaded")
+        st.sidebar.info("Files will be auto-detected during processing")
         
-        for uploaded_file in uploaded_files:
-            # Here we would use the existing LLM detection logic
-            # For now, let's provide a simple manual selection as fallback
-            file_type = st.sidebar.selectbox(
-                f"File type for '{uploaded_file.name}':",
-                ["Auto-detect", "Vendor Contracts", "EGE Customers", "EGE Opportunities", "BT Clients", "BT Opportunities"],
-                key=f"type_{uploaded_file.name}"
-            )
-            
-            if file_type == "Vendor Contracts":
-                vendor_file = uploaded_file
-                st.sidebar.success(f"✓ {uploaded_file.name} → Vendor Contracts")
-            elif file_type == "EGE Customers":
-                client_files['ege_customers'] = uploaded_file
-                st.sidebar.success(f"✓ {uploaded_file.name} → EGE Customers")
-            elif file_type == "EGE Opportunities":
-                client_files['ege_opportunities'] = uploaded_file
-                st.sidebar.success(f"✓ {uploaded_file.name} → EGE Opportunities")
-            elif file_type == "BT Clients":
-                client_files['bt_clients'] = uploaded_file
-                st.sidebar.success(f"✓ {uploaded_file.name} → BT Clients")
-            elif file_type == "BT Opportunities":
-                client_files['bt_opportunities'] = uploaded_file
-                st.sidebar.success(f"✓ {uploaded_file.name} → BT Opportunities")
-            elif file_type == "Auto-detect":
-                st.sidebar.info(f"🔍 {uploaded_file.name} → Will be auto-detected when processed")
+        # Store all files for auto-detection during processing
+        st.session_state.auto_detect_files = uploaded_files
     
     return vendor_file, client_files
 
@@ -286,9 +259,48 @@ def process_uploaded_files(vendor_file, client_files):
     """Process uploaded files and return processed dataframes."""
     processed_data = {}
     
+    # Handle auto-detection files first
+    auto_detect_files = st.session_state.get('auto_detect_files', [])
+    if auto_detect_files:
+        st.info(f"🤖 Auto-detecting {len(auto_detect_files)} files...")
+        
+        for uploaded_file in auto_detect_files:
+            try:
+                # Load file to detect type
+                import io
+                file_buffer = io.BytesIO(uploaded_file.getbuffer())
+                file_ext = uploaded_file.name.split('.')[-1].lower()
+                
+                if file_ext == 'csv':
+                    df = pd.read_csv(file_buffer, encoding='utf-8')
+                elif file_ext in ['xlsx', 'xls']:
+                    df = pd.read_excel(file_buffer)
+                else:
+                    continue
+                
+                df.columns = df.columns.astype(str).str.strip()
+                
+                # Use LLM to detect file type
+                detected_type = st.session_state.data_processor.detect_file_type(df, uploaded_file.name)
+                
+                # Assign based on detected type
+                if detected_type == 'raindrop_vendors' or 'contract' in uploaded_file.name.lower():
+                    if vendor_file is None:  # Only assign if no vendor file already
+                        vendor_file = uploaded_file
+                        st.success(f"🤖 Auto-detected: {uploaded_file.name} → Vendor Contracts")
+                elif detected_type in ['ege_customers', 'ege_opportunities', 'bt_clients', 'bt_opportunities']:
+                    client_files[detected_type] = uploaded_file
+                    type_name = detected_type.replace('_', ' ').title()
+                    st.success(f"🤖 Auto-detected: {uploaded_file.name} → {type_name}")
+                else:
+                    st.warning(f"⚠️ Could not auto-detect type for: {uploaded_file.name}")
+                    
+            except Exception as e:
+                st.warning(f"Failed to auto-detect {uploaded_file.name}: {str(e)}")
+    
     with st.spinner("Processing files..."):
         progress_bar = st.progress(0)
-        total_files = 1 + len(client_files)
+        total_files = (1 if vendor_file else 0) + len(client_files)
         current_file = 0
         
         # Process vendor file
@@ -560,11 +572,11 @@ def display_matching_results(matching_results):
         """, unsafe_allow_html=True)
     
     with col3:
-        avg_relationship_value = consolidated_df['total_relationship_value'].mean()
+        avg_vendor_spend = consolidated_df['vendor_total_spend_usd'].mean()
         st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-value">${avg_relationship_value:,.0f}</div>
-            <div class="metric-label">Avg Relationship Value</div>
+            <div class="metric-value">${avg_vendor_spend:,.0f}</div>
+            <div class="metric-label">Avg Vendor Spend</div>
         </div>
         """, unsafe_allow_html=True)
     
@@ -624,7 +636,7 @@ def display_matching_results(matching_results):
         if selected_company != "Select a company...":
             display_company_details(consolidated_df, selected_company, matching_results.get('raw_matches'))
     
-    st.info(f"Showing {len(filtered_results)} of {len(matching_results)} total matches")
+    st.info(f"Showing {len(filtered_df)} of {len(consolidated_df)} companies")
     
     # Simplified charts section for summary when company is selected
     if selected_company != "Select a company...":
@@ -691,125 +703,18 @@ def display_matching_results(matching_results):
         st.markdown("---")
         st.subheader("📈 Overall Summary")
         
-        # Simple top companies chart
-        top_companies = consolidated_df.nlargest(10, 'total_relationship_value')
+        # Simple top companies chart by vendor spend
+        top_companies = consolidated_df.nlargest(10, 'vendor_total_spend_usd')
         
         fig = px.bar(
             top_companies,
             x='company_name',
-            y='total_relationship_value',
-            title='Top 10 Company Relationships by Total Value',
-            labels={'company_name': 'Company', 'total_relationship_value': 'Total Value (USD)'}  
+            y='vendor_total_spend_usd',
+            title='Top 10 Companies by Vendor Spend',
+            labels={'company_name': 'Company', 'vendor_total_spend_usd': 'Vendor Spend (USD)'}  
         )
         fig.update_layout(xaxis_tickangle=45)
         st.plotly_chart(fig, width='stretch')
-    
-    with chart_tabs[1]:
-        st.markdown("### Match Type Distribution")
-        chart = create_match_type_distribution(filtered_results)
-        if chart:
-            col1, col2 = st.columns([2, 1])
-            with col1:
-                st.plotly_chart(chart, width='stretch')
-            with col2:
-                st.markdown("#### Match Quality")
-                exact_count = sum(filtered_results['match_type'] == 'exact')
-                fuzzy_count = sum(filtered_results['match_type'] == 'fuzzy')
-                st.metric("Exact Matches", exact_count)
-                st.metric("Fuzzy Matches", fuzzy_count)
-                if len(filtered_results) > 0:
-                    accuracy = exact_count / len(filtered_results) * 100
-                    st.metric("Accuracy", f"{accuracy:.1f}%")
-        else:
-            st.info("No data available for this chart.")
-    
-    with chart_tabs[2]:
-        st.markdown("### Vendor Contract Expiry Timeline")
-        chart = create_contract_expiry_timeline(filtered_results)
-        if chart:
-            st.plotly_chart(chart, width='stretch')
-            
-            # Add expiry summary
-            timeline_data = filtered_results[
-                (filtered_results['vendor_contract_end_date'] != 'Not specified') & 
-                (filtered_results['vendor_contract_end_date'].notna())
-            ]
-            if len(timeline_data) > 0:
-                timeline_data['end_date'] = pd.to_datetime(timeline_data['vendor_contract_end_date'], errors='coerce')
-                timeline_data = timeline_data[timeline_data['end_date'].notna()]
-                
-                if len(timeline_data) > 0:
-                    today = datetime.now()
-                    expiring_soon = timeline_data[timeline_data['end_date'] <= today + pd.Timedelta(days=180)]
-                    
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Total Contracts", len(timeline_data))
-                    with col2:
-                        st.metric("Expiring in 6 months", len(expiring_soon))
-                    with col3:
-                        if len(expiring_soon) > 0:
-                            risk_value = expiring_soon['total_relationship_value'].sum()
-                            st.metric("At Risk Value", f"${risk_value:,.0f}")
-        else:
-            st.info("No contract end dates available for timeline visualization.")
-    
-    with chart_tabs[3]:
-        st.markdown("### Vendor vs Client Spend Analysis")
-        chart = create_spend_comparison_chart(filtered_results)
-        if chart:
-            st.plotly_chart(chart, width='stretch')
-            
-            # Add spend analysis
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown("#### Vendor Spend Analysis")
-                vendor_total = filtered_results['vendor_total_spend_usd'].sum()
-                vendor_avg = filtered_results['vendor_total_spend_usd'].mean()
-                st.metric("Total Vendor Spend", f"${vendor_total:,.0f}")
-                st.metric("Average Vendor Spend", f"${vendor_avg:,.0f}")
-            
-            with col2:
-                st.markdown("#### Client Spend Analysis")
-                client_total = filtered_results['client_spend_usd'].sum()
-                client_avg = filtered_results['client_spend_usd'].mean()
-                st.metric("Total Client Spend", f"${client_total:,.0f}")
-                st.metric("Average Client Spend", f"${client_avg:,.0f}")
-        else:
-            st.info("No data available for this chart.")
-    
-    with chart_tabs[4]:
-        st.markdown("### Opportunity Stages Overview")
-        chart = create_opportunity_stages_chart(filtered_results)
-        if chart:
-            st.plotly_chart(chart, width='stretch')
-            
-            # Add stage analysis
-            opportunities = filtered_results[
-                (filtered_results['opportunity_stages'].notna()) & 
-                (filtered_results['opportunity_stages'] != '')
-            ]
-            if len(opportunities) > 0:
-                stage_values = opportunities.groupby('opportunity_stages').agg({
-                    'total_relationship_value': 'sum',
-                    'company_name': 'count'
-                }).round(0)
-                stage_values.columns = ['Total Value ($)', 'Count']
-                stage_values['Total Value ($)'] = stage_values['Total Value ($)'].apply(lambda x: f"${x:,.0f}")
-                
-                st.markdown("#### Opportunity Value by Stage")
-                st.dataframe(stage_values, width='stretch')
-        else:
-            st.info("No opportunity data available for stage analysis.")
-    
-    with chart_tabs[5]:
-        st.markdown("### Summary Dashboard")
-        if st.session_state.processed_data:
-            chart = create_summary_metrics_chart(filtered_results, st.session_state.processed_data)
-            if chart:
-                st.plotly_chart(chart, width='stretch')
-        else:
-            st.info("Process data first to see summary dashboard.")
     
     # Export section
     st.markdown("---")
@@ -839,7 +744,11 @@ def display_matching_results(matching_results):
     if export_button:
         with st.spinner("Generating export..."):
             # Determine which data to export
-            export_data = filtered_results if export_type == "Current View" else matching_results
+            if export_type == "Current View":
+                export_data = filtered_df
+            else:
+                # For full dataset, use consolidated relationships DataFrame
+                export_data = matching_results['consolidated_relationships']
             
             if len(export_data) == 0:
                 st.error("No data to export!")
@@ -884,26 +793,28 @@ def main():
     
     # Process files button
     if st.sidebar.button("🚀 Process Files", type="primary", width='stretch'):
-        if vendor_file and client_files:
+        # Check if we have any files to process (either manually assigned or auto-detect)
+        has_files = (vendor_file and client_files) or st.session_state.get('auto_detect_files', [])
+        
+        if has_files:
             processed_data = process_uploaded_files(vendor_file, client_files)
             if processed_data:
                 st.session_state.processed_data = processed_data
                 st.success("Files processed successfully!")
+                
+                # Auto-run matching immediately after processing
+                st.info("🔍 Auto-running matching...")
+                matching_results = perform_matching(processed_data)
+                if matching_results is not None:
+                    st.session_state.matching_results = matching_results
+                    st.success("Matching completed successfully!")
         else:
             st.error("Please upload at least one vendor file and one client file.")
     
-    # Show data overview if data is processed
+    # Show data overview and results if available
     if st.session_state.processed_data:
         show_data_overview(st.session_state.processed_data)
-        
-        # Perform matching button
-        if st.button("🔍 Find Matches", type="primary", width='content'):
-            matching_results = perform_matching(st.session_state.processed_data)
-            if matching_results is not None:
-                st.session_state.matching_results = matching_results
-                st.success("Matching completed successfully!")
     
-    # Display results if available
     if st.session_state.matching_results is not None:
         display_matching_results(st.session_state.matching_results)
     
@@ -964,16 +875,16 @@ def display_company_details(consolidated_df, company_name, raw_matches_df):
         if len(vendor_contracts) > 0:
             st.markdown("### 💼 Vendor Contract Details")
             
-            # Show individual contracts
+            # Show individual contracts with original supplier names
             contract_display = []
             for _, contract in vendor_contracts.iterrows():
-                vendor_data = contract['vendor_data'] if isinstance(contract['vendor_data'], dict) else {}
                 contract_display.append({
-                    'Supplier/Vendor': vendor_data.get('company_name', company_name),
-                    'Contract Value (USD)': f"${vendor_data.get('total_value', 0):,.0f}",
-                    'End Date': vendor_data.get('end_date', 'Not specified'),
-                    'Contract Terms': vendor_data.get('terms_months', 'Not specified'),
-                    'Currency': vendor_data.get('currency', 'USD')
+                    'Supplier/Vendor': contract.get('original_supplier_name', company_name),
+                    'Contract Value (USD)': f"${contract.get('vendor_spend_usd', 0):,.0f}",
+                    'End Date': contract.get('vendor_contract_end_date', 'Not specified'),
+                    'Contract Terms': contract.get('vendor_contract_terms_months', 'Not specified'),
+                    'Currency': contract.get('vendor_currency', 'USD'),
+                    'Match Type': contract.get('match_type', 'N/A')
                 })
             
             contract_df = pd.DataFrame(contract_display)
@@ -986,13 +897,13 @@ def display_company_details(consolidated_df, company_name, raw_matches_df):
     with col1:
         st.write(f"**Total Client Spend:** ${company_data['client_total_spend_usd']:,.0f}")
         st.write(f"**Data Sources:** {company_data.get('client_sources', 'N/A')}")
+        st.write(f"**Record Types:** {company_data.get('client_record_types', 'N/A')}")
     
     with col2:
         if pd.notna(company_data.get('opportunity_stages')):
             st.write(f"**Opportunity Stages:** {company_data.get('opportunity_stages')}")
         
-        relationship_value = company_data['total_relationship_value']
-        st.write(f"**Total Relationship Value:** ${relationship_value:,.0f}")
+        # Removed total relationship value as requested
 
 if __name__ == "__main__":
     main()

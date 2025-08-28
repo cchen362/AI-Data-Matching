@@ -19,12 +19,25 @@ class MatchingEngine:
         self.match_results = []
     
     def normalize_company_name(self, name: str) -> str:
-        """Normalize company name for better matching."""
+        """Enhanced normalization for better matching, especially for companies with locations."""
         if pd.isna(name) or not isinstance(name, str):
             return ""
         
         # Basic normalization
         normalized = name.strip().lower()
+        
+        # Remove location-specific patterns (for better consolidation)
+        location_patterns = [
+            r'\s+\([^)]*\)',  # Remove anything in parentheses like "(US)" or "(Americas)"
+            r'\s+-\s+[a-z\s]+$',  # Remove suffixes like "- Americas", "- US", "- Europe"
+            r'\s+us$', r'\s+usa$', r'\s+uk$', r'\s+europe$', r'\s+emea$',
+            r'\s+asia$', r'\s+apac$', r'\s+americas$', r'\s+north america$',
+            r'\s+international$', r'\s+global$', r'\s+worldwide$'
+        ]
+        
+        import re
+        for pattern in location_patterns:
+            normalized = re.sub(pattern, '', normalized)
         
         # Remove common business suffixes for matching purposes
         suffixes_to_remove = [
@@ -284,6 +297,7 @@ class MatchingEngine:
             
             consolidated_match = {
                 'company_name': match['vendor_name'],
+                'original_supplier_name': vendor_data.get('original_supplier_name', match['vendor_name']),
                 'vendor_spend_usd': vendor_data.get('total_value', 0),
                 'vendor_currency': vendor_data.get('currency', 'N/A'),
                 'vendor_contract_end_date': vendor_data.get('end_date', 'Not specified'),

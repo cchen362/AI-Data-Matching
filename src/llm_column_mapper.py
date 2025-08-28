@@ -29,6 +29,11 @@ class LLMColumnMapper:
                     "examples": ["Microsoft Corporation", "IBM", "Accenture PLC", "Deloitte Consulting"],
                     "keywords": ["supplier", "vendor", "company", "corporation", "organization"]
                 },
+                "individual_supplier_name": {
+                    "description": "The individual supplier or vendor name for each specific contract",
+                    "examples": ["Microsoft Corp - Contract A", "IBM Services", "Accenture Digital", "Individual Vendor Name"],
+                    "keywords": ["name", "individual name", "contract name", "specific supplier", "vendor name"]
+                },
                 "contract_value": {
                     "description": "Total monetary value of the contract",
                     "examples": ["125000", "1500000.50", "$2,500,000"],
@@ -171,18 +176,39 @@ class LLMColumnMapper:
             
             mapping_text = response.choices[0].message.content.strip()
             
+            # Clean the JSON response (remove markdown formatting if present)
+            clean_json = self._clean_llm_json_response(mapping_text)
+            
             # Parse the JSON response
             try:
-                mapping = json.loads(mapping_text)
+                mapping = json.loads(clean_json)
                 logger.info(f"LLM mapped {len(mapping)} columns for {file_type}")
                 return mapping
             except json.JSONDecodeError:
-                logger.error(f"Failed to parse LLM response as JSON: {mapping_text}")
+                logger.error(f"Failed to parse LLM response as JSON: {clean_json}")
                 return self._fallback_mapping(columns, file_type)
                 
         except Exception as e:
             logger.error(f"LLM mapping failed: {str(e)}")
             return self._fallback_mapping(columns, file_type)
+    
+    def _clean_llm_json_response(self, response_text: str) -> str:
+        """Clean LLM response to extract valid JSON."""
+        # Remove markdown code blocks
+        if '```json' in response_text:
+            # Extract content between ```json and ```
+            start = response_text.find('```json') + 7
+            end = response_text.find('```', start)
+            if end != -1:
+                response_text = response_text[start:end]
+        elif '```' in response_text:
+            # Handle plain ``` blocks
+            start = response_text.find('```') + 3
+            end = response_text.find('```', start)
+            if end != -1:
+                response_text = response_text[start:end]
+        
+        return response_text.strip()
     
     def _create_mapping_prompt(self, columns: List[str], schema: Dict, file_type: str, sample_data: Dict = None) -> str:
         """Create a detailed prompt for the LLM."""
@@ -244,6 +270,13 @@ JSON RESPONSE:
                         break
                     elif 'company_name' not in mapping:
                         mapping['company_name'] = col
+            
+            # Find individual supplier name column
+            for col in columns:
+                col_lower = col.lower().strip()
+                if col_lower == 'name' and 'individual_supplier_name' not in mapping:
+                    mapping['individual_supplier_name'] = col
+                    break
             
             # Find other columns
             for col in columns:

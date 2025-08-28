@@ -91,6 +91,7 @@ class DataProcessor:
         
         # Apply the mapping to get standardized columns
         company_col = column_mapping['company_name']
+        individual_supplier_col = column_mapping.get('individual_supplier_name')
         value_col = column_mapping.get('contract_value')
         currency_col = column_mapping.get('currency')
         terms_col = column_mapping.get('contract_terms') 
@@ -98,6 +99,15 @@ class DataProcessor:
         
         # Create standardized columns
         processed_df['company_name'] = processed_df[company_col].astype(str).str.strip()
+        
+        # Preserve original supplier name for display purposes
+        # Use individual supplier name if available, otherwise use company name
+        if individual_supplier_col and individual_supplier_col in processed_df.columns:
+            processed_df['original_supplier_name'] = processed_df[individual_supplier_col].astype(str).str.strip()
+            logger.info(f"Using individual supplier names from column: {individual_supplier_col}")
+        else:
+            processed_df['original_supplier_name'] = processed_df[company_col].astype(str).str.strip()
+            logger.info(f"Using company names from column: {company_col} for individual supplier names")
         
         if value_col and value_col in processed_df.columns:
             processed_df['total_value'] = self._extract_numeric(processed_df[value_col])
