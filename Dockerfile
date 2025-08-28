@@ -13,8 +13,8 @@ RUN apt-get update && apt-get install -y \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Create app user for security
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+# Create app user for security with proper home directory
+RUN groupadd -r appuser && useradd -r -g appuser -m -d /home/appuser appuser
 
 # Set work directory
 WORKDIR /app
@@ -29,10 +29,12 @@ RUN pip install -r requirements.txt
 COPY src/ ./src/
 COPY app.py .
 COPY health_check.py .
+COPY .streamlit/ ./.streamlit/
 
-# Create necessary directories
+# Create necessary directories and set up home directory
 RUN mkdir -p uploads exports logs && \
-    chown -R appuser:appuser /app
+    mkdir -p /home/appuser/.streamlit && \
+    chown -R appuser:appuser /app /home/appuser
 
 # Switch to non-root user
 USER appuser
