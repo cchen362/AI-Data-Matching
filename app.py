@@ -595,11 +595,11 @@ def display_matching_results(matching_results):
         'client_sources'
     ]].copy()
     
-    # Format for display
+    # Format for display (same as working version)
     overview_df['vendor_total_spend_usd'] = overview_df['vendor_total_spend_usd'].apply(lambda x: f"${x:,.0f}")
     overview_df['client_total_spend_usd'] = overview_df['client_total_spend_usd'].apply(lambda x: f"${x:,.0f}")
-    
-    # Rename columns for better display
+
+    # Rename columns for better display (keep numeric values for proper sorting)
     overview_df = overview_df.rename(columns={
         'company_name': 'Company Name',
         'vendor_contract_count': 'Contract Count', 
@@ -609,19 +609,21 @@ def display_matching_results(matching_results):
         'client_sources': 'Client Sources'
     })
     
-    # Add simple search
+    # Add simple search with session state
     search_company = st.text_input(
         "🔍 Search Companies", 
         placeholder="Type to search companies..."
     )
+    # Store search term in session state for export functionality
+    st.session_state.current_search = search_company
     
     # Apply search filter
     filtered_df = overview_df.copy()
     if search_company:
         filtered_df = filtered_df[filtered_df['Company Name'].str.contains(search_company, case=False, na=False)]
     
-    # Display overview table
-    st.dataframe(filtered_df, width='stretch', height=400)
+    # Display overview table (hide index to remove confusing row numbers)
+    st.dataframe(filtered_df, width='stretch', height=400, hide_index=True)
     
     st.info(f"💡 Click on any company name below to see detailed breakdown")
     
@@ -745,10 +747,22 @@ def display_matching_results(matching_results):
         with st.spinner("Generating export..."):
             # Determine which data to export
             if export_type == "Current View":
-                export_data = filtered_df
+                # For current view, filter the consolidated relationships based on search
+                consolidated_df = matching_results['consolidated_relationships']
+                current_search = st.session_state.get('current_search', '')
+                if current_search and current_search.strip():
+                    # Filter consolidated data by the same search criteria
+                    export_data = consolidated_df[
+                        consolidated_df['company_name'].str.contains(current_search, case=False, na=False)
+                    ]
+                    st.info(f"🔍 Exporting Current View: {len(export_data)} companies matching '{current_search}'")
+                else:
+                    export_data = consolidated_df
+                    st.info(f"📊 Exporting Current View: All {len(export_data)} companies (no search filter)")
             else:
                 # For full dataset, use consolidated relationships DataFrame
                 export_data = matching_results['consolidated_relationships']
+                st.info(f"📈 Exporting Full Dataset: {len(export_data)} companies")
             
             if len(export_data) == 0:
                 st.error("No data to export!")
@@ -897,13 +911,28 @@ def display_company_details(consolidated_df, company_name, raw_matches_df):
     with col1:
         st.write(f"**Total Client Spend:** ${company_data['client_total_spend_usd']:,.0f}")
         st.write(f"**Data Sources:** {company_data.get('client_sources', 'N/A')}")
-        st.write(f"**Record Types:** {company_data.get('client_record_types', 'N/A')}")
+        
+        # Determine status based on data source type
+        data_sources = company_data.get('client_sources', '').lower()
+        if 'opportunities' in data_sources:
+            # It's an opportunity - show the actual stage
+            opportunity_stage = company_data.get('opportunity_stages')
+            if pd.notna(opportunity_stage) and str(opportunity_stage).strip() != '' and str(opportunity_stage).lower() != 'nan':
+                status = str(opportunity_stage).strip()
+            else:
+                status = "Opportunity (Stage Unknown)"
+        elif 'customers' in data_sources or 'clients' in data_sources:
+            status = "Active"
+        elif company_data.get('client_total_spend_usd', 0) > 0:
+            # Has spend but unclear source type
+            status = "Active"
+        else:
+            status = "Unknown"
+        st.write(f"**Status:** {status}")
     
     with col2:
-        if pd.notna(company_data.get('opportunity_stages')):
-            st.write(f"**Opportunity Stages:** {company_data.get('opportunity_stages')}")
-        
-        # Removed total relationship value as requested
+        # Additional client info could go here in the future
+        pass
 
 if __name__ == "__main__":
     main()

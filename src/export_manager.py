@@ -344,8 +344,12 @@ def create_html_export(matching_results: pd.DataFrame, processed_data: dict) -> 
                     <div class="label">Fuzzy Matches</div>
                 </div>
                 <div class="summary-card">
-                    <div class="value">${{ summary.total_value }}</div>
-                    <div class="label">Total Relationship Value</div>
+                    <div class="value">${{ summary.total_vendor_spend }}</div>
+                    <div class="label">Total Vendor Spend</div>
+                </div>
+                <div class="summary-card">
+                    <div class="value">${{ summary.total_client_spend }}</div>
+                    <div class="label">Total Client Spend</div>
                 </div>
             </div>
             
@@ -359,44 +363,18 @@ def create_html_export(matching_results: pd.DataFrame, processed_data: dict) -> 
                                 <th>Company Name</th>
                                 <th>Vendor Spend (USD)</th>
                                 <th>Client Spend (USD)</th>
-                                <th>Total Value (USD)</th>
-                                <th>Match Type</th>
-                                <th>Match Score</th>
                                 <th>Contract End Date</th>
+                                <th>Contract Count</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for row in matches %}
                             <tr>
                                 <td><strong>{{ row.company_name }}</strong></td>
-                                <td class="currency">${{ "%.0f"|format(row.vendor_total_spend_usd) }}</td>
-                                <td class="currency">${{ "%.0f"|format(row.client_total_spend_usd) }}</td>
-                                <td class="currency"><strong>${{ "%.0f"|format(row.total_relationship_value) }}</strong></td>
-                                <td>
-                                    {% if row.match_type is defined %}
-                                        {% if row.match_type == 'exact' %}
-                                            <span class="match-exact">EXACT</span>
-                                        {% else %}
-                                            <span class="match-fuzzy">FUZZY</span>
-                                        {% endif %}
-                                    {% elif row.match_quality is defined %}
-                                        {% if row.match_quality == 'Exact' %}
-                                            <span class="match-exact">EXACT</span>
-                                        {% else %}
-                                            <span class="match-fuzzy">FUZZY</span>
-                                        {% endif %}
-                                    {% else %}
-                                        <span class="match-fuzzy">MATCHED</span>
-                                    {% endif %}
-                                </td>
-                                <td>
-                                    {% if row.match_score is defined %}
-                                        {{ "%.1f"|format(row.match_score * 100) }}%
-                                    {% else %}
-                                        N/A
-                                    {% endif %}
-                                </td>
-                                <td>{{ row.vendor_contract_end_date }}</td>
+                                <td class="currency">${{ "{:,.0f}".format(row.vendor_total_spend_usd) }}</td>
+                                <td class="currency">${{ "{:,.0f}".format(row.client_total_spend_usd) }}</td>
+                                <td>{{ row.vendor_earliest_end_date if row.vendor_earliest_end_date != 'Not specified' else 'N/A' }}</td>
+                                <td>{{ row.vendor_contract_count }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -411,7 +389,8 @@ def create_html_export(matching_results: pd.DataFrame, processed_data: dict) -> 
                 <div class="summary-grid">
                     <div class="summary-card">
                         <div class="value">{{ analysis.match_rate }}%</div>
-                        <div class="label">Match Success Rate</div>
+                        <div class="label">Data Coverage</div>
+                        <div style="font-size: 0.7rem; opacity: 0.8; margin-top: 5px;">Vendors with client matches</div>
                     </div>
                     <div class="summary-card">
                         <div class="value">${{ analysis.avg_vendor_spend }}</div>
@@ -473,13 +452,16 @@ def create_summary_data(matching_results: pd.DataFrame, processed_data: dict) ->
         exact_matches = 0
         fuzzy_matches = 0
     
-    total_value = matching_results['total_relationship_value'].sum()
+    # Calculate total vendor and client spend separately
+    total_vendor_spend = matching_results['vendor_total_spend_usd'].sum()
+    total_client_spend = matching_results['client_total_spend_usd'].sum()
     
     return {
         'total_matches': f"{len(matching_results):,}",
         'exact_matches': f"{exact_matches:,}",
         'fuzzy_matches': f"{fuzzy_matches:,}",
-        'total_value': f"{total_value:,.0f}"
+        'total_vendor_spend': f"{total_vendor_spend:,.0f}",
+        'total_client_spend': f"{total_client_spend:,.0f}"
     }
 
 def create_analysis_data(matching_results: pd.DataFrame, processed_data: dict) -> dict:
@@ -489,7 +471,11 @@ def create_analysis_data(matching_results: pd.DataFrame, processed_data: dict) -
         return None
     
     total_vendors = len(processed_data.get('vendors', []))
-    match_rate = (len(matching_results) / total_vendors * 100) if total_vendors > 0 else 0
+    
+    # Calculate match rate based on individual vendor contracts that found matches
+    # matching_results is consolidated data, so we need to count the actual vendor contracts
+    total_matched_contracts = matching_results['vendor_contract_count'].sum()
+    match_rate = (total_matched_contracts / total_vendors * 100) if total_vendors > 0 else 0
     
     avg_vendor_spend = matching_results['vendor_total_spend_usd'].mean()
     avg_client_spend = matching_results['client_total_spend_usd'].mean()
