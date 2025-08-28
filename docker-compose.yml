@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  ai-data-matching:
+    build: .
+    container_name: ai-data-matching
+    ports:
+      - "8503:8501"
+    environment:
+      # REQUIRED: OpenAI API Key - set this when running
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Optional overrides
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}
+      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-50}
+      - FUZZY_MATCH_THRESHOLD=${FUZZY_MATCH_THRESHOLD:-0.85}
+    volumes:
+      # Mount data directories for file uploads/exports
+      - ./data:/app/data:ro
+      - ./uploads:/app/uploads
+      - ./exports:/app/exports
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "health_check.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ai-data-matching.rule=Host(`data-matching.yourdomain.com`)"
+      - "traefik.http.services.ai-data-matching.loadbalancer.server.port=8501"

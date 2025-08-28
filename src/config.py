@@ -6,8 +6,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # OpenAI Configuration
+# In production/Docker, this will be passed as environment variable
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = "gpt-4o"
+
+# Validate OpenAI API key is available
+if not OPENAI_API_KEY:
+    import logging
+    logging.warning("OPENAI_API_KEY not found in environment variables. LLM features may not work.")
+    logging.warning("For Docker deployment, pass the key as: -e OPENAI_API_KEY='your-key-here'")
 
 # Currency API Configuration - Using exchangerate-api.com (free, no key required)
 CURRENCY_API_URL = "https://api.exchangerate-api.com/v4/latest/USD"

@@ -14,51 +14,68 @@ A powerful Streamlit web application for matching vendor contracts with client o
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Python 3.9 or higher
-- Virtual environment (recommended)
+- Docker and Docker Compose
 - OpenAI API key for advanced features
 
-### Installation
+### Docker Deployment (Recommended)
 
-1. **Clone or download the project**
+1. **Clone the project**
 ```bash
+git clone https://github.com/cchen362/AI-Data-Matching.git
 cd AI-Data-Matching
 ```
 
-2. **Create and activate virtual environment**
+2. **Quick Deploy (Easiest)**
 ```bash
-# Create virtual environment
-python -m venv venv
+# Make scripts executable
+chmod +x scripts/*.sh
 
-# Activate (Windows)
-venv\Scripts\activate
-
-# Activate (macOS/Linux)
-source venv/bin/activate
+# Run deployment script (will prompt for API key)
+./scripts/deploy.sh
 ```
 
-3. **Install dependencies**
+3. **Alternative: Manual Deploy**
+```bash
+# Option A: Set environment variable
+export OPENAI_API_KEY="your-key-here"
+docker-compose up -d
+
+# Option B: Create .env file
+echo "OPENAI_API_KEY=your-key-here" > .env
+docker-compose up -d
+
+# Option C: Use the interactive deployment
+./scripts/deploy.bat  # Windows
+./scripts/deploy.sh   # Linux/Mac
+```
+
+4. **Access the application**
+- Open your browser to `http://localhost:8501`
+- For production: `http://your-server-ip:8501`
+
+### Traditional Python Setup (Alternative)
+
+1. **Create and activate virtual environment**
+```bash
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+venv\Scripts\activate     # Windows
+```
+
+2. **Install dependencies**
 ```bash
 pip install -r requirements.txt
 ```
 
-4. **Set up environment variables**
-Create a `.env` file in the project root:
-```
-OPENAI_API_KEY=your_openai_api_key_here
-```
-
-5. **Run tests (optional but recommended)**
+3. **Set up environment variables**
 ```bash
-python test_runner.py
+echo "OPENAI_API_KEY=your-key-here" > .env
 ```
 
-6. **Start the application**
+4. **Start the application**
 ```bash
 streamlit run app.py
 ```
-
-The application will open in your browser at `http://localhost:8501`
 
 ## 📁 File Format Support
 
@@ -150,19 +167,32 @@ EXACT_MATCH_THRESHOLD = 1.0        # Exact matches only
 FUZZY_MATCH_THRESHOLD = 0.85       # Conservative fuzzy matching
 ```
 
-## 🧪 Testing
+## 🧪 Testing & Health Checks
 
-Run the comprehensive test suite:
+### Docker Health Check
 ```bash
-python test_runner.py
+# Check container health
+docker-compose ps
+
+# Run health check manually
+docker exec ai-data-matching python health_check.py
+
+# View application logs
+docker-compose logs -f
 ```
 
-Tests cover:
-- Data loading and processing for all file types
-- Currency conversion with live API
-- Matching engine accuracy with known test cases  
-- Export functionality for both HTML and Excel
-- Full integration workflow with sample data
+### Manual Testing
+```bash
+# Test with sample data (traditional setup)
+python health_check.py
+streamlit run app.py
+```
+
+Health checks cover:
+- Dependencies verification
+- Environment configuration
+- Core module imports
+- OpenAI API key validation
 
 ## 📊 Sample Data
 
@@ -214,18 +244,48 @@ These samples include realistic scenarios like:
 ### Project Structure
 ```
 AI-Data-Matching/
-├── app.py                 # Main Streamlit application
+├── app.py                    # Main Streamlit application
+├── Dockerfile               # Docker container configuration
+├── docker-compose.yml       # Development deployment
+├── docker-compose.prod.yml  # Production deployment
+├── health_check.py          # Health check script
+├── .env.example             # Environment template
 ├── src/
-│   ├── config.py         # Configuration and constants
-│   ├── data_processor.py # File loading and processing
+│   ├── config.py            # Configuration and constants
+│   ├── data_processor.py    # File loading and processing
 │   ├── currency_converter.py # Currency conversion
-│   ├── matching_engine.py # Two-phase matching logic
-│   ├── charts.py         # Interactive visualizations
-│   └── export_manager.py # HTML and Excel exports
-├── test_data/            # Sample data files
-├── test_runner.py        # Comprehensive test suite
-├── requirements.txt      # Python dependencies
-└── README.md            # This file
+│   ├── matching_engine.py   # Two-phase matching logic
+│   ├── charts.py            # Interactive visualizations
+│   └── export_manager.py    # HTML and Excel exports
+├── scripts/
+│   ├── deploy.sh            # Deployment automation
+│   ├── deploy.bat           # Windows deployment
+│   ├── update-api-key.sh    # API key management
+│   └── quick-deploy.sh      # Server deployment
+├── test_data/               # Sample data files
+├── requirements.txt         # Python dependencies
+└── README.md               # This file
+```
+
+### Docker Management
+```bash
+# Start application
+docker-compose up -d
+
+# Stop application  
+docker-compose down
+
+# View logs
+docker-compose logs -f
+
+# Restart after changes
+docker-compose restart
+
+# Update API key
+./scripts/update-api-key.sh
+
+# Production deployment
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
 ### Contributing

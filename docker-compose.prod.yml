@@ -1,0 +1,94 @@
+version: '3.8'
+
+# Production overrides for AI Data Matching Tool
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  ai-data-matching:
+    image: ai-data-matching:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - BUILD_ENV=production
+    container_name: ai-data-matching-prod
+    
+    # Production port mapping
+    ports:
+      - "8503:8501"  # Using port 8503 to avoid conflicts
+    
+    # Production environment variables
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=gpt-4o
+      - PYTHONUNBUFFERED=1
+      - STREAMLIT_SERVER_HEADLESS=true
+      - STREAMLIT_SERVER_ENABLE_CORS=false
+      - STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION=false
+    
+    # Production volume mounts - read-only where appropriate
+    volumes:
+      - /opt/ai-data-matching/data:/app/data:ro
+      - /opt/ai-data-matching/uploads:/app/uploads
+      - /opt/ai-data-matching/exports:/app/exports
+      - /opt/ai-data-matching/logs:/app/logs
+    
+    # Production restart policy
+    restart: always
+    
+    # Production resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+    
+    # Enhanced health check for production
+    healthcheck:
+      test: ["CMD", "python", "health_check.py"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    
+    # Production logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Production labels for monitoring/proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ai-data-matching-prod.rule=Host(`data-matching.yourdomain.com`)"
+      - "traefik.http.routers.ai-data-matching-prod.entrypoints=websecure"
+      - "traefik.http.routers.ai-data-matching-prod.tls.certresolver=letsencrypt"
+      - "traefik.http.services.ai-data-matching-prod.loadbalancer.server.port=8501"
+      - "traefik.http.middlewares.ai-data-matching-auth.basicauth.users=admin:$$2y$$10$$..."
+      - "com.docker.compose.service=ai-data-matching"
+      - "com.docker.compose.project=ai-data-matching-prod"
+
+# Production networks
+networks:
+  default:
+    external:
+      name: traefik
+
+# Production volumes
+volumes:
+  data:
+    driver: local
+    driver_opts:
+      type: none
+      device: /opt/ai-data-matching/data
+      o: bind
+  logs:
+    driver: local
+    driver_opts:
+      type: none
+      device: /opt/ai-data-matching/logs
+      o: bind

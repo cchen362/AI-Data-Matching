@@ -934,5 +934,29 @@ def display_company_details(consolidated_df, company_name, raw_matches_df):
         # Additional client info could go here in the future
         pass
 
+# Health check endpoint for Docker
+def health_check():
+    """Simple health check endpoint."""
+    try:
+        from src.config import OPENAI_API_KEY
+        from src.data_processor import DataProcessor
+        
+        # Check if OpenAI key is available
+        if not OPENAI_API_KEY:
+            return {"status": "warning", "message": "OpenAI API key not configured"}
+        
+        # Basic functionality check
+        processor = DataProcessor()
+        return {"status": "healthy", "message": "Application is running"}
+    except Exception as e:
+        return {"status": "error", "message": f"Health check failed: {str(e)}"}
+
 if __name__ == "__main__":
-    main()
+    # Check if this is a health check request
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "--health":
+        result = health_check()
+        print(result["message"])
+        sys.exit(0 if result["status"] == "healthy" else 1)
+    else:
+        main()
