@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(/C:\\Users\\cchen362\\OneDrive\\Desktop/**)",
+      "WebFetch(domain:github.com)",
+      "WebSearch",
+      "Read(/C:\\Users\\cchen362\\OneDrive\\Desktop/**)",
+      "Bash(python test_runner.py:*)",
+      "Bash(python:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

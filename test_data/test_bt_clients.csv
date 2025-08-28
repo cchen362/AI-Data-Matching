@@ -1,0 +1,11 @@
+Reporting ID,Ultimate Parent Name,Account Name,Expected Total Travel Volume Currency,Expected Total Travel Volume
+MSFT1,Microsoft Corporation - Ultimate Parent,Microsoft Asia,USD,125000
+MSFT2,Microsoft Corporation - Ultimate Parent,Microsoft Australia,AUD,85000
+IBM1,IBM - Ultimate Parent,IBM Canada,CAD,95000
+IBM2,IBM - Ultimate Parent,IBM Japan,JPY,12500000
+ACCN1,Accenture - Ultimate Parent,Accenture Singapore,SGD,115000
+ACCN2,Accenture - Ultimate Parent,Accenture India,INR,8750000
+ORCL1,Oracle Corporation - Ultimate Parent,Oracle APAC,USD,145000
+AMZN1,Amazon.com Inc - Ultimate Parent,Amazon International,USD,425000
+GOOG1,Alphabet Inc - Ultimate Parent,Google EMEA,EUR,285000
+SFDC1,Salesforce.com Inc - Ultimate Parent,Salesforce International,USD,89000
